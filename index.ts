@@ -1,6 +1,5 @@
 import express, { Express, Request, Response } from "express";
-// import dotenv from "dotenv";
-const dotenv = require('./node_modules/dotenv');
+import dotenv from "dotenv";
 import cors from "cors";
 import connectToDB from "./db";
 import MainRoutes from "./routes/main.routes";
