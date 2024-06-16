@@ -13,9 +13,12 @@ class PaymentService {
             stripe.checkout.sessions.list().then(sessions => {
                 const sessionsPromises = sessions.data.map(session => {
                     if (session.payment_intent) {
-                        return stripe.paymentIntents.retrieve(session.payment_intent).then(paymentIntent => {
+                        return stripe.paymentIntents.retrieve(session.payment_intent, { expand: ['charges'] }).then(paymentIntent => {
                             return stripe.checkout.sessions.listLineItems(session.id).then(lineItems => {
-                                return { session, paymentIntent, lineItems: lineItems.data };
+                                return stripe.charges.list({ payment_intent: session.payment_intent }).then(charges => {
+                                    const paymentDate = new Date(charges.data[0].created * 1000);
+                                    return { session, paymentIntent, lineItems: lineItems.data, charges: charges.data[0], paymentDate };
+                                });
                             }).catch(err => reject(err));
                         }).catch(err => reject(err));
                     }
@@ -42,7 +45,7 @@ class PaymentService {
                 .then((res) => {
                 stripe.checkout.sessions
                     .create({
-                    payment_method_types: ["card"],
+                    payment_method_types: ["card", "alipay", "amazon_pay"],
                     mode: "payment",
                     line_items: [
                         {
