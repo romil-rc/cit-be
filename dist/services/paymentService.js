@@ -60,8 +60,8 @@ class PaymentService {
                             quantity: 1,
                         }
                     ],
-                    success_url: "http://localhost:4200/payments",
-                    cancel_url: "http://localhost:4200/payments",
+                    success_url: "https://cit-fe.vercel.app/cit-fe/payments",
+                    cancel_url: "https://cit-fe.vercel.app/cit-fe/payments",
                 })
                     .then((response) => resolve({ url: response.url }))
                     .catch((err) => reject(err));
