@@ -1,7 +1,12 @@
 // import paymentRepository from "../repository/paymentRepository";
 import Stripe from "stripe";
 import ClassService from "./classService";
+import Razorpay from "razorpay";
 const stripe = new Stripe(process.env.STRIPE_PRIVATE_KEY || "");
+const razorpayInstance = new Razorpay({
+  key_id: 'rzp_test_kdXlkz2Tyzmf81',
+  key_secret: 'nMF8vwk3UOIONaRJYUZpsyAp',
+});
 
 class PaymentService {
   constructor() {}
@@ -36,37 +41,57 @@ class PaymentService {
     });
   }
 
-  public addPayment(body: any) {
+  public addPayment(body: any): Promise<any> {
     return new Promise((resolve, reject) => {
       const classService = new ClassService();
       classService
         .getClass(body.classId)
         .then((res) => {
-          stripe.checkout.sessions
-            .create({
-              payment_method_types: ["card", "alipay", "amazon_pay"],
-              mode: "payment",
-              line_items: [ 
-                {
-                  price_data: {
-                    currency: "usd",
-                    product_data: {
-                      name: res.data.className,
-                      images: [res.data.classImage]
-                    },
-                    unit_amount: res.data.classFee * 100,
-                  },
-                  quantity: 1,
-                }
-            ],
-            success_url: "https://cit-fe.vercel.app/payments",
-            cancel_url: "https://cit-fe.vercel.app/payments",
-            })
-            .then((response) => resolve({ url: response.url }))
-            .catch((err) => reject(err));
+          if(body.paymentGateway === 'stripe') {
+            this.stripeCheckout(res.data, resolve, reject);
+          } else if(body.paymentGateway === 'razorpay') {
+            this.razorpayCheckout(res.data, resolve, reject);
+          }
         })
         .catch((err) => reject(err));
     });
+  }
+
+  private stripeCheckout(data: any, resolve: (value: { url: any }) => void, reject: (reason?: any) => void): void {
+    stripe.checkout.sessions
+    .create({
+      payment_method_types: ["card", "alipay", "amazon_pay"],
+      mode: "payment",
+      line_items: [ 
+        {
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: data.className,
+              images: [data.classImage]
+            },
+            unit_amount: data.classFee * 100,
+          },
+          quantity: 1,
+        }
+    ],
+    success_url: "http://localhost:4200/payments",
+    cancel_url: "http://localhost:4200/payments",
+    })
+    .then((response) => resolve({ url: response.url }))
+    .catch((err) => reject(err));
+  }
+
+  private razorpayCheckout(data: any, resolve: (value: { orderId: any, amount: any }) => void, reject: (reason?: any) => void): void {
+    var options = {
+      amount: data.classFee,
+      currency: "INR",
+      receipt: "order_rcptid_11"
+    };
+    razorpayInstance.orders.create(options).then(order => {
+      // console.log(order);
+      resolve({orderId: order.id, amount: order.amount});
+    }).catch(err => reject(err));
   }
 
   public getPayment(locationId: string): Promise<any> {
