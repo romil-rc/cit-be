@@ -4,8 +4,8 @@ import ClassService from "./classService";
 import Razorpay from "razorpay";
 const stripe = new Stripe(process.env.STRIPE_PRIVATE_KEY || "");
 const razorpayInstance = new Razorpay({
-  key_id: 'rzp_test_kdXlkz2Tyzmf81',
-  key_secret: 'nMF8vwk3UOIONaRJYUZpsyAp',
+  key_id: 'rzp_live_AmpQY2tGNDYHJJ',
+  key_secret: 'fl3h76umUbGY6ArxZ9N8tPlu',
 });
 
 class PaymentService {
