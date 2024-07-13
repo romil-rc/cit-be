@@ -155,8 +155,8 @@ class PaymentService {
       transactionId: 'this_is_transaction_id',
       paymentMethod: 'card'
     }
-    this.paymentRepository.create(paymentBody).then(response => {
-      resolve(response);
+    this.paymentRepository.create(paymentBody).then(() => {
+      resolve({url: 'http://localhost:4200/payments'});
     }).catch(err => reject(err));
   }
 
