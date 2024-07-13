@@ -1,18 +1,29 @@
 "use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
-// import paymentRepository from "../repository/paymentRepository";
 const stripe_1 = __importDefault(require("stripe"));
 const classService_1 = __importDefault(require("./classService"));
 const razorpay_1 = __importDefault(require("razorpay"));
+const paymentRepository_1 = __importDefault(require("../repository/paymentRepository"));
 const stripe = new stripe_1.default(process.env.STRIPE_PRIVATE_KEY || "");
 const razorpayInstance = new razorpay_1.default({
-    key_id: 'rzp_live_AmpQY2tGNDYHJJ',
-    key_secret: 'fl3h76umUbGY6ArxZ9N8tPlu',
+    key_id: (process.env.RAZORPAY_TEST_KEY_ID || ""),
+    key_secret: (process.env.RAZORPAY_TEST_KEY_SECRET || ""),
 });
 class PaymentService {
-    constructor() { }
+    constructor() {
+        this.paymentRepository = new paymentRepository_1.default();
+    }
     getAllPayments() {
         return new Promise((resolve, reject) => {
             stripe.checkout.sessions.list().then(sessions => {
@@ -49,16 +60,32 @@ class PaymentService {
                 .getClass(body.classId)
                 .then((res) => {
                 if (body.paymentGateway === 'stripe') {
-                    this.stripeCheckout(res.data, resolve, reject);
+                    this.stripeCheckout(res.data, body, resolve, reject);
                 }
                 else if (body.paymentGateway === 'razorpay') {
                     this.razorpayCheckout(res.data, resolve, reject);
+                }
+                else if (body.paymentGateway === 'razorpay-card') {
+                    this.mockPayment(res.data, body, resolve, reject);
                 }
             })
                 .catch((err) => reject(err));
         });
     }
-    stripeCheckout(data, resolve, reject) {
+    processGooglePayments(token) {
+        return new Promise((resolve, reject) => {
+            stripe.paymentIntents.create({
+                amount: 100,
+                currency: 'usd',
+                payment_method_types: ['card', 'link'],
+                payment_method: token,
+                confirm: true
+            }).then(paymentIntent => {
+                resolve(paymentIntent);
+            }).catch(err => reject(err));
+        });
+    }
+    stripeCheckout(data, body, resolve, reject) {
         stripe.checkout.sessions
             .create({
             payment_method_types: ["card", "alipay", "amazon_pay"],
@@ -79,8 +106,29 @@ class PaymentService {
             success_url: "http://localhost:4200/payments",
             cancel_url: "http://localhost:4200/payments",
         })
-            .then((response) => resolve({ url: response.url }))
-            .catch((err) => reject(err));
+            .then((response) => __awaiter(this, void 0, void 0, function* () {
+            console.log(response);
+            const paymentBody = {
+                amount: data.classFee,
+                currency: data.currency || 'usd',
+                paymentGateway: body.paymentGateway,
+                paymentStatus: 'pending',
+                orderId: body.classId,
+                receiptId: 'this_is_receipt_id',
+                classScheduleId: 'this_is_class_schedule_id',
+                cardLast4Digits: '1234',
+                name: body.cardHolderName,
+                mobileNumber: '9876543210',
+                emailId: 'customer_email_id',
+                userId: 'this_is_user_id',
+                location: data.location,
+                transactionId: 'this_is_transaction_id',
+                paymentMethod: 'card'
+            };
+            this.paymentRepository.create(paymentBody).then(() => {
+                resolve({ url: response.url });
+            }).catch(err => reject(err));
+        })).catch((err) => reject(err));
     }
     razorpayCheckout(data, resolve, reject) {
         var options = {
@@ -91,6 +139,30 @@ class PaymentService {
         razorpayInstance.orders.create(options).then(order => {
             // console.log(order);
             resolve({ orderId: order.id, amount: order.amount });
+        }).catch(err => reject(err));
+    }
+    mockPayment(data, body, resolve, reject) {
+        var _a;
+        // console.log(data, body);
+        const paymentBody = {
+            amount: data.classFee,
+            currency: 'usd',
+            paymentGateway: body.paymentGateway,
+            paymentStatus: 'pending',
+            orderId: data._id,
+            receiptId: 'this_is_receipt_id',
+            classScheduleId: 'this_is_class_schedule_id',
+            cardLast4Digits: (_a = body === null || body === void 0 ? void 0 : body.cardNumber) === null || _a === void 0 ? void 0 : _a.slice(-4),
+            name: body.cardHolderName,
+            mobileNumber: '9876543210',
+            emailId: 'customer_email_id',
+            userId: 'this_is_user_id',
+            location: data.location,
+            transactionId: 'this_is_transaction_id',
+            paymentMethod: 'card'
+        };
+        this.paymentRepository.create(paymentBody).then(response => {
+            resolve(response);
         }).catch(err => reject(err));
     }
     getPayment(locationId) {

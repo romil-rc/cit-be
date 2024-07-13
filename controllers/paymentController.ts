@@ -17,6 +17,13 @@ class PaymentController {
         }).catch(error => next(error));
     }
 
+    public processGPayments(req: express.Request, res: express.Response, next: express.NextFunction) {
+        const paymentService = new PaymentService();
+        paymentService.processGooglePayments(req.body.token).then(result => {
+            res.send(result);
+        }).catch(error => next(error));
+    }
+
     public getPayment(req: express.Request, res: express.Response, next: express.NextFunction) {
         // const locationService = new LocationService();
         // locationService.getLocation(req.params.id).then(result => {

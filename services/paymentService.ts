@@ -1,15 +1,20 @@
-// import paymentRepository from "../repository/paymentRepository";
 import Stripe from "stripe";
 import ClassService from "./classService";
 import Razorpay from "razorpay";
+import PaymentRepository from "../repository/paymentRepository";
 const stripe = new Stripe(process.env.STRIPE_PRIVATE_KEY || "");
 const razorpayInstance = new Razorpay({
-  key_id: 'rzp_live_AmpQY2tGNDYHJJ',
-  key_secret: 'fl3h76umUbGY6ArxZ9N8tPlu',
+  key_id: (process.env.RAZORPAY_TEST_KEY_ID || ""),
+  key_secret: (process.env.RAZORPAY_TEST_KEY_SECRET || ""),
 });
 
 class PaymentService {
-  constructor() {}
+
+  private paymentRepository: PaymentRepository;
+
+  constructor() {
+    this.paymentRepository = new PaymentRepository();
+  }
 
   public getAllPayments() {
     return new Promise((resolve, reject) => {
@@ -48,16 +53,32 @@ class PaymentService {
         .getClass(body.classId)
         .then((res) => {
           if(body.paymentGateway === 'stripe') {
-            this.stripeCheckout(res.data, resolve, reject);
+            this.stripeCheckout(res.data, body, resolve, reject);
           } else if(body.paymentGateway === 'razorpay') {
             this.razorpayCheckout(res.data, resolve, reject);
+          } else if(body.paymentGateway === 'razorpay-card') {
+            this.mockPayment(res.data, body, resolve, reject);
           }
         })
         .catch((err) => reject(err));
     });
   }
 
-  private stripeCheckout(data: any, resolve: (value: { url: any }) => void, reject: (reason?: any) => void): void {
+  public processGooglePayments(token: any) {
+    return new Promise((resolve, reject) => {
+      stripe.paymentIntents.create({
+        amount: 100,
+        currency: 'usd',
+        payment_method_types: ['card', 'link'],
+        payment_method: token,
+        confirm: true
+      }).then(paymentIntent => {
+        resolve(paymentIntent);
+      }).catch(err => reject(err));
+    });
+  }
+
+  private stripeCheckout(data: any, body: any, resolve: (value: { url: any }) => void, reject: (reason?: any) => void): void {
     stripe.checkout.sessions
     .create({
       payment_method_types: ["card", "alipay", "amazon_pay"],
@@ -78,8 +99,29 @@ class PaymentService {
     success_url: "http://localhost:4200/payments",
     cancel_url: "http://localhost:4200/payments",
     })
-    .then((response) => resolve({ url: response.url }))
-    .catch((err) => reject(err));
+    .then(async (response) => {
+      console.log(response);
+      const paymentBody = {
+        amount: data.classFee,
+        currency: data.currency || 'usd',
+        paymentGateway: body.paymentGateway,
+        paymentStatus: 'pending',
+        orderId: body.classId,
+        receiptId: 'this_is_receipt_id',
+        classScheduleId: 'this_is_class_schedule_id',
+        cardLast4Digits: '1234',
+        name: body.cardHolderName,
+        mobileNumber: '9876543210',
+        emailId: 'customer_email_id',
+        userId: 'this_is_user_id',
+        location: data.location,
+        transactionId: 'this_is_transaction_id',
+        paymentMethod: 'card'
+      }
+      this.paymentRepository.create(paymentBody).then(() => {
+        resolve({ url: response.url })
+      }).catch(err => reject(err));
+    }).catch((err) => reject(err));
   }
 
   private razorpayCheckout(data: any, resolve: (value: { orderId: any, amount: any }) => void, reject: (reason?: any) => void): void {
@@ -91,6 +133,30 @@ class PaymentService {
     razorpayInstance.orders.create(options).then(order => {
       // console.log(order);
       resolve({orderId: order.id, amount: order.amount});
+    }).catch(err => reject(err));
+  }
+
+  private mockPayment(data: any, body: any, resolve: any, reject: (reason?: any) => void) {
+    // console.log(data, body);
+    const paymentBody = {
+      amount: data.classFee,
+      currency: 'usd',
+      paymentGateway: body.paymentGateway,
+      paymentStatus: 'pending',
+      orderId: data._id,
+      receiptId: 'this_is_receipt_id',
+      classScheduleId: 'this_is_class_schedule_id',
+      cardLast4Digits: body?.cardNumber?.slice(-4),
+      name: body.cardHolderName,
+      mobileNumber: '9876543210',
+      emailId: 'customer_email_id',
+      userId: 'this_is_user_id',
+      location: data.location,
+      transactionId: 'this_is_transaction_id',
+      paymentMethod: 'card'
+    }
+    this.paymentRepository.create(paymentBody).then(response => {
+      resolve(response);
     }).catch(err => reject(err));
   }
 

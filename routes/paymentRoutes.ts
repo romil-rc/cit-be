@@ -21,6 +21,9 @@ class PaymentRoutes {
         this.router.route('/:id')
             .get(this.PaymentController.getPayment);
 
+        this.router.route('/gpay-process-payment')
+            .post(this.PaymentController.processGPayments);
+
         return this.router;
     }
 }

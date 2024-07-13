@@ -16,6 +16,12 @@ class PaymentController {
             res.send(result);
         }).catch(error => next(error));
     }
+    processGPayments(req, res, next) {
+        const paymentService = new paymentService_1.default();
+        paymentService.processGooglePayments(req.body.token).then(result => {
+            res.send(result);
+        }).catch(error => next(error));
+    }
     getPayment(req, res, next) {
         // const locationService = new LocationService();
         // locationService.getLocation(req.params.id).then(result => {
