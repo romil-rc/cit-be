@@ -11,5 +11,17 @@ class PaymentRepository {
             }).catch(err => reject(err));
         });
     }
+    find(query) {
+        return new Promise((resolve, reject) => {
+            paymentSchema_1.default.find(query).then(docs => {
+                if (docs) {
+                    resolve(docs);
+                }
+                else {
+                    reject('No payment');
+                }
+            }).catch(err => reject(err));
+        });
+    }
 }
 module.exports = PaymentRepository;

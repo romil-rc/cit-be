@@ -16,33 +16,37 @@ class PaymentService {
     this.paymentRepository = new PaymentRepository();
   }
 
-  public getAllPayments() {
+  public getAllPayments(gateway: any) {
     return new Promise((resolve, reject) => {
-      stripe.checkout.sessions.list().then(sessions => {
-        const sessionsPromises = sessions.data.map(session => {
-          if(session.payment_intent) {
-            return stripe.paymentIntents.retrieve(session.payment_intent as string, { expand: ['charges'] }).then(paymentIntent => {
-                return stripe.checkout.sessions.listLineItems(session.id).then(lineItems => {
-                  return stripe.charges.list({ payment_intent: session.payment_intent as string }).then(charges => {
-                    const paymentDate = new Date(charges.data[0].created * 1000);
-                    return{session, paymentIntent, lineItems: lineItems.data, charges: charges.data[0], paymentDate};
-                  })
-              }).catch(err => reject(err));
-            }).catch(err => reject(err))
-          } 
-          // else {
-          //   return Promise.resolve({
-          //     session,
-          //     paymentIntent: null,
-          //     lineItems: []
-          //   });
-          // }
+      if(gateway === 'stripe') {
+        stripe.checkout.sessions.list().then(sessions => {
+          const sessionsPromises = sessions.data.map(session => {
+            if(session.payment_intent) {
+              return stripe.paymentIntents.retrieve(session.payment_intent as string, { expand: ['charges'] }).then(paymentIntent => {
+                  return stripe.checkout.sessions.listLineItems(session.id).then(lineItems => {
+                    return stripe.charges.list({ payment_intent: session.payment_intent as string }).then(charges => {
+                      const paymentDate = new Date(charges.data[0].created * 1000);
+                      return{session, paymentIntent, lineItems: lineItems.data, charges: charges.data[0], paymentDate};
+                    })
+                }).catch(err => reject(err));
+              }).catch(err => reject(err))
+            }
+          })
+          Promise.all(sessionsPromises)
+            .then(results => resolve(results))
+            .catch(err => reject(err));
         })
-        Promise.all(sessionsPromises)
-          .then(results => resolve(results))
-          .catch(err => reject(err));
-      })
-      .catch((err) => reject(err));
+        .catch((err) => reject(err));
+      } else if(gateway === 'db') {
+          const filter = {};
+          this.paymentRepository.find(filter).then(payments => {
+                  const resData = {
+                      status: 'success',
+                      data: payments
+                  }
+                  resolve(resData);
+          }).catch(err => reject(err.message));
+      }
     });
   }
 
@@ -58,6 +62,8 @@ class PaymentService {
             this.razorpayCheckout(res.data, resolve, reject);
           } else if(body.paymentGateway === 'razorpay-card') {
             this.mockPayment(res.data, body, resolve, reject);
+          } else if(body.paymentGateway === 'razorpayUPI') {
+            this.qrMockPayment(res.data, body, resolve, reject);
           }
         })
         .catch((err) => reject(err));
@@ -99,15 +105,13 @@ class PaymentService {
     success_url: "http://localhost:4200/payments",
     cancel_url: "http://localhost:4200/payments",
     })
-    .then(async (response) => {
-      console.log(response);
+    .then((response) => {
       const paymentBody = {
         amount: data.classFee,
         currency: data.currency || 'usd',
         paymentGateway: body.paymentGateway,
         paymentStatus: 'pending',
         orderId: body.classId,
-        receiptId: 'this_is_receipt_id',
         classScheduleId: 'this_is_class_schedule_id',
         cardLast4Digits: '1234',
         name: body.cardHolderName,
@@ -116,7 +120,7 @@ class PaymentService {
         userId: 'this_is_user_id',
         location: data.location,
         transactionId: 'this_is_transaction_id',
-        paymentMethod: 'card'
+        paymentMethod: 'CARD'
       }
       this.paymentRepository.create(paymentBody).then(() => {
         resolve({ url: response.url })
@@ -137,14 +141,12 @@ class PaymentService {
   }
 
   private mockPayment(data: any, body: any, resolve: any, reject: (reason?: any) => void) {
-    // console.log(data, body);
     const paymentBody = {
       amount: data.classFee,
       currency: 'usd',
       paymentGateway: body.paymentGateway,
       paymentStatus: 'pending',
       orderId: data._id,
-      receiptId: 'this_is_receipt_id',
       classScheduleId: 'this_is_class_schedule_id',
       cardLast4Digits: body?.cardNumber?.slice(-4),
       name: body.cardHolderName,
@@ -153,7 +155,30 @@ class PaymentService {
       userId: 'this_is_user_id',
       location: data.location,
       transactionId: 'this_is_transaction_id',
-      paymentMethod: 'card'
+      paymentMethod: 'CARD'
+    }
+    this.paymentRepository.create(paymentBody).then(() => {
+      resolve({url: 'http://localhost:4200/payments'});
+    }).catch(err => reject(err));
+  }
+
+  private qrMockPayment(data: any, body: any, resolve: any, reject: (reason?: any) => void) {
+    console.log(data, body);
+    const paymentBody = {
+      amount: data.classFee,
+      currency: 'usd',
+      paymentGateway: body.paymentGateway,
+      paymentStatus: 'pending',
+      orderId: data._id,
+      classScheduleId: 'this_is_class_schedule_id',
+      cardLast4Digits: body?.cardNumber?.slice(-4),
+      name: body.userDetail.name,
+      mobileNumber: '9876543210',
+      emailId: body.userDetail.email,
+      userId: 'this_is_user_id',
+      location: data.location,
+      transactionId: 'this_is_transaction_id',
+      paymentMethod: 'UPI'
     }
     this.paymentRepository.create(paymentBody).then(() => {
       resolve({url: 'http://localhost:4200/payments'});

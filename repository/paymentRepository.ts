@@ -8,6 +8,18 @@ class PaymentRepository {
             }).catch(err => reject(err));
         });
     }
+
+    public find(query: object): Promise<any> {
+        return new Promise((resolve, reject) => {            
+            Payment.find(query).then(docs => {
+                if(docs) {
+                    resolve(docs);
+                } else {
+                    reject('No payment');
+                }
+            }).catch(err => reject(err));
+        });
+    }
 }
 
 export = PaymentRepository;

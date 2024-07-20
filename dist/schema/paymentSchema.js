@@ -31,7 +31,6 @@ const paymentSchema = new Schema({
     paymentGateway: { type: String, required: true },
     paymentStatus: { type: String },
     orderId: { type: String },
-    receiptId: { type: String },
     classScheduleId: { type: String },
     cardLast4Digits: { type: String },
     name: { type: String },

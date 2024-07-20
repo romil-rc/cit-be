@@ -1,13 +1,4 @@
 "use strict";
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -24,33 +15,38 @@ class PaymentService {
     constructor() {
         this.paymentRepository = new paymentRepository_1.default();
     }
-    getAllPayments() {
+    getAllPayments(gateway) {
         return new Promise((resolve, reject) => {
-            stripe.checkout.sessions.list().then(sessions => {
-                const sessionsPromises = sessions.data.map(session => {
-                    if (session.payment_intent) {
-                        return stripe.paymentIntents.retrieve(session.payment_intent, { expand: ['charges'] }).then(paymentIntent => {
-                            return stripe.checkout.sessions.listLineItems(session.id).then(lineItems => {
-                                return stripe.charges.list({ payment_intent: session.payment_intent }).then(charges => {
-                                    const paymentDate = new Date(charges.data[0].created * 1000);
-                                    return { session, paymentIntent, lineItems: lineItems.data, charges: charges.data[0], paymentDate };
-                                });
+            if (gateway === 'stripe') {
+                stripe.checkout.sessions.list().then(sessions => {
+                    const sessionsPromises = sessions.data.map(session => {
+                        if (session.payment_intent) {
+                            return stripe.paymentIntents.retrieve(session.payment_intent, { expand: ['charges'] }).then(paymentIntent => {
+                                return stripe.checkout.sessions.listLineItems(session.id).then(lineItems => {
+                                    return stripe.charges.list({ payment_intent: session.payment_intent }).then(charges => {
+                                        const paymentDate = new Date(charges.data[0].created * 1000);
+                                        return { session, paymentIntent, lineItems: lineItems.data, charges: charges.data[0], paymentDate };
+                                    });
+                                }).catch(err => reject(err));
                             }).catch(err => reject(err));
-                        }).catch(err => reject(err));
-                    }
-                    // else {
-                    //   return Promise.resolve({
-                    //     session,
-                    //     paymentIntent: null,
-                    //     lineItems: []
-                    //   });
-                    // }
-                });
-                Promise.all(sessionsPromises)
-                    .then(results => resolve(results))
-                    .catch(err => reject(err));
-            })
-                .catch((err) => reject(err));
+                        }
+                    });
+                    Promise.all(sessionsPromises)
+                        .then(results => resolve(results))
+                        .catch(err => reject(err));
+                })
+                    .catch((err) => reject(err));
+            }
+            else if (gateway === 'db') {
+                const filter = {};
+                this.paymentRepository.find(filter).then(payments => {
+                    const resData = {
+                        status: 'success',
+                        data: payments
+                    };
+                    resolve(resData);
+                }).catch(err => reject(err.message));
+            }
         });
     }
     addPayment(body) {
@@ -67,6 +63,9 @@ class PaymentService {
                 }
                 else if (body.paymentGateway === 'razorpay-card') {
                     this.mockPayment(res.data, body, resolve, reject);
+                }
+                else if (body.paymentGateway === 'razorpayUPI') {
+                    this.qrMockPayment(res.data, body, resolve, reject);
                 }
             })
                 .catch((err) => reject(err));
@@ -106,15 +105,13 @@ class PaymentService {
             success_url: "http://localhost:4200/payments",
             cancel_url: "http://localhost:4200/payments",
         })
-            .then((response) => __awaiter(this, void 0, void 0, function* () {
-            console.log(response);
+            .then((response) => {
             const paymentBody = {
                 amount: data.classFee,
                 currency: data.currency || 'usd',
                 paymentGateway: body.paymentGateway,
                 paymentStatus: 'pending',
                 orderId: body.classId,
-                receiptId: 'this_is_receipt_id',
                 classScheduleId: 'this_is_class_schedule_id',
                 cardLast4Digits: '1234',
                 name: body.cardHolderName,
@@ -123,12 +120,12 @@ class PaymentService {
                 userId: 'this_is_user_id',
                 location: data.location,
                 transactionId: 'this_is_transaction_id',
-                paymentMethod: 'card'
+                paymentMethod: 'CARD'
             };
             this.paymentRepository.create(paymentBody).then(() => {
                 resolve({ url: response.url });
             }).catch(err => reject(err));
-        })).catch((err) => reject(err));
+        }).catch((err) => reject(err));
     }
     razorpayCheckout(data, resolve, reject) {
         var options = {
@@ -143,14 +140,12 @@ class PaymentService {
     }
     mockPayment(data, body, resolve, reject) {
         var _a;
-        // console.log(data, body);
         const paymentBody = {
             amount: data.classFee,
             currency: 'usd',
             paymentGateway: body.paymentGateway,
             paymentStatus: 'pending',
             orderId: data._id,
-            receiptId: 'this_is_receipt_id',
             classScheduleId: 'this_is_class_schedule_id',
             cardLast4Digits: (_a = body === null || body === void 0 ? void 0 : body.cardNumber) === null || _a === void 0 ? void 0 : _a.slice(-4),
             name: body.cardHolderName,
@@ -159,7 +154,30 @@ class PaymentService {
             userId: 'this_is_user_id',
             location: data.location,
             transactionId: 'this_is_transaction_id',
-            paymentMethod: 'card'
+            paymentMethod: 'CARD'
+        };
+        this.paymentRepository.create(paymentBody).then(() => {
+            resolve({ url: 'http://localhost:4200/payments' });
+        }).catch(err => reject(err));
+    }
+    qrMockPayment(data, body, resolve, reject) {
+        var _a;
+        console.log(data, body);
+        const paymentBody = {
+            amount: data.classFee,
+            currency: 'usd',
+            paymentGateway: body.paymentGateway,
+            paymentStatus: 'pending',
+            orderId: data._id,
+            classScheduleId: 'this_is_class_schedule_id',
+            cardLast4Digits: (_a = body === null || body === void 0 ? void 0 : body.cardNumber) === null || _a === void 0 ? void 0 : _a.slice(-4),
+            name: body.userDetail.name,
+            mobileNumber: '9876543210',
+            emailId: body.userDetail.email,
+            userId: 'this_is_user_id',
+            location: data.location,
+            transactionId: 'this_is_transaction_id',
+            paymentMethod: 'UPI'
         };
         this.paymentRepository.create(paymentBody).then(() => {
             resolve({ url: 'http://localhost:4200/payments' });

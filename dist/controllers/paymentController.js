@@ -6,7 +6,7 @@ const paymentService_1 = __importDefault(require("../services/paymentService"));
 class PaymentController {
     getAllPayments(req, res, next) {
         const paymentService = new paymentService_1.default();
-        paymentService.getAllPayments().then(result => {
+        paymentService.getAllPayments(req.query.type).then(result => {
             res.send(result);
         }).catch(error => next(error));
     }
