@@ -40,11 +40,7 @@ class PaymentService {
             else if (gateway === 'db') {
                 const filter = {};
                 this.paymentRepository.find(filter).then(payments => {
-                    const resData = {
-                        status: 'success',
-                        data: payments
-                    };
-                    resolve(resData);
+                    resolve(payments);
                 }).catch(err => reject(err.message));
             }
         });
