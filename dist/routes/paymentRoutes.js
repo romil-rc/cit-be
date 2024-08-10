@@ -7,16 +7,18 @@ const paymentController_1 = __importDefault(require("../controllers/paymentContr
 class PaymentRoutes {
     constructor() {
         this.router = express_1.default.Router();
-        this.PaymentController = new paymentController_1.default();
+        this.paymentController = new paymentController_1.default();
     }
     get routes() {
         this.router.route('/')
-            .get(this.PaymentController.getAllPayments)
-            .post(this.PaymentController.addPayment);
+            .get(this.paymentController.getAllPayments)
+            .post(this.paymentController.addPayment);
         this.router.route('/:id')
-            .get(this.PaymentController.getPayment);
+            .get(this.paymentController.getPayment);
+        this.router.route('/:id/download-receipt')
+            .post(this.paymentController.downloadPaymentReceipt);
         this.router.route('/gpay-process-payment')
-            .post(this.PaymentController.processGPayments);
+            .post(this.paymentController.processGPayments);
         return this.router;
     }
 }

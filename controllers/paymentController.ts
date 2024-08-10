@@ -31,6 +31,13 @@ class PaymentController {
         // }).catch(error => next(error));
     }
 
+    public downloadPaymentReceipt(req: express.Request, res: express.Response, next: express.NextFunction) {
+        const paymentService = new PaymentService();
+        paymentService.downloadPaymentReceipt(req.params.id, req.body.currency).then(result => {
+            res.send(result);
+        }).catch(error => next(error));
+    }
+
 }
 
 export = PaymentController;

@@ -11,6 +11,35 @@ const razorpayInstance = new razorpay_1.default({
     key_id: (process.env.RAZORPAY_TEST_KEY_ID || ""),
     key_secret: (process.env.RAZORPAY_TEST_KEY_SECRET || ""),
 });
+const rawReceiptData_json_1 = __importDefault(require("../repository/rawReceiptData.json"));
+const fonts = {
+    Courier: {
+        normal: 'Courier',
+        bold: 'Courier-Bold',
+        italics: 'Courier-Oblique',
+        bolditalics: 'Courier-BoldOblique'
+    },
+    Helvetica: {
+        normal: 'Helvetica',
+        bold: 'Helvetica-Bold',
+        italics: 'Helvetica-Oblique',
+        bolditalics: 'Helvetica-BoldOblique'
+    },
+    Times: {
+        normal: 'Times-Roman',
+        bold: 'Times-Bold',
+        italics: 'Times-Italic',
+        bolditalics: 'Times-BoldItalic'
+    },
+    Symbol: {
+        normal: 'Symbol'
+    },
+    ZapfDingbats: {
+        normal: 'ZapfDingbats'
+    }
+};
+let PdfPrinter = require('pdfmake');
+let printer = new PdfPrinter(fonts);
 class PaymentService {
     constructor() {
         this.paymentRepository = new paymentRepository_1.default();
@@ -39,8 +68,18 @@ class PaymentService {
             }
             else if (gateway === 'db') {
                 const filter = {};
+                const classService = new classService_1.default();
                 this.paymentRepository.find(filter).then(payments => {
-                    resolve(payments);
+                    const allPayments = payments.map((payment) => {
+                        // console.log(payment.orderId);
+                        classService.getClass(payment.orderId).then(userClass => {
+                            // console.log(userClass.data.className);
+                            payment['className'] = userClass.data.className;
+                        });
+                        return payment;
+                    });
+                    // console.log(allPayments);
+                    resolve(allPayments);
                 }).catch(err => reject(err.message));
             }
         });
@@ -78,6 +117,31 @@ class PaymentService {
             }).then(paymentIntent => {
                 resolve(paymentIntent);
             }).catch(err => reject(err));
+        });
+    }
+    downloadPaymentReceipt(id, currency) {
+        return new Promise((resolve, reject) => {
+            const receiptData = rawReceiptData_json_1.default.data[0];
+            console.log(receiptData);
+            let docDefinition = {
+                pageOrientation: 'portrait',
+                pageMargins: [40, 40, 40, 40],
+                content: [
+                    this.receiptHeader(receiptData.createdAt, receiptData.orderId, receiptData.name),
+                    this.receiptTable(receiptData)
+                ],
+                defaultStyle: {
+                    font: 'Helvetica',
+                    columnGap: 20
+                }
+            };
+            try {
+                let pdfQuote = printer.createPdfKitDocument(docDefinition);
+                this.saveFileToBlob(pdfQuote, 'Receipt', resolve);
+            }
+            catch (err) {
+                reject(err);
+            }
         });
     }
     stripeCheckout(data, body, resolve, reject) {
@@ -158,7 +222,7 @@ class PaymentService {
     }
     qrMockPayment(data, body, resolve, reject) {
         var _a;
-        console.log(data, body);
+        // console.log(data, body);
         const paymentBody = {
             amount: data.classFee,
             currency: 'usd',
@@ -190,6 +254,107 @@ class PaymentService {
             //     resolve(resData);
             // }).catch(err => reject(err))
         });
+    }
+    saveFileToBlob(doc, fileName, resolve) {
+        let chunks = [];
+        doc.on('data', function (chunk) {
+            chunks.push(chunk);
+        });
+        doc.on('end', function () {
+            resolve({ result: Buffer.concat(chunks).toString('base64'), fileName });
+            chunks = [];
+        });
+        doc.end();
+    }
+    receiptHeader(date, orderId, name) {
+        const header = [
+            {
+                text: 'Receipt',
+                fontSize: 16,
+                bold: true,
+                margin: [0, 0, 0, 10]
+            },
+            {
+                text: 'Receipt for Class - ' + new Date(date).toUTCString(),
+                margin: [0, 0, 0, 10]
+            },
+            {
+                text: 'Class In Town',
+                fontSize: 14,
+                margin: [0, 0, 0, 10]
+            },
+            {
+                alignment: 'justify',
+                columns: [
+                    {
+                        text: 'Address'
+                    },
+                    {
+                        stack: [
+                            { text: `Date: ${date}`, margin: [0, 0, 0, 4] },
+                            { text: `Order: ${orderId}` }
+                        ]
+                    }
+                ]
+            },
+            {
+                text: 'Sold to: ' + name,
+                margin: [0, 0, 0, 10]
+            }
+        ];
+        return header.filter(data => data);
+    }
+    receiptTable(receiptData) {
+        const header = [
+            {
+                style: 'tableExample',
+                table: {
+                    headerRows: 1,
+                    widths: ['*', 60, 45, 45, 45],
+                    body: [
+                        this.getReceiptTableHeader(),
+                        ...this.receiptTableData(receiptData),
+                        ...this.taxAndTotalSection(receiptData.amount)
+                    ]
+                },
+                layout: 'lightHorizontalLines'
+            }
+        ];
+        return header.filter(data => data);
+    }
+    getReceiptTableHeader() {
+        const header = [
+            { text: 'Item', style: 'tableHeader' },
+            { text: 'Ordered', style: 'tableHeader' },
+            { text: 'Quantity', style: 'tableHeader' },
+            { text: 'Price', style: 'tableHeader' },
+            { text: 'Amount', style: 'tableHeader' }
+        ];
+        return header.filter(data => data);
+    }
+    receiptTableData(receiptData) {
+        const quantity = 1;
+        const data = [
+            ['Class Name', new Date(receiptData.createdAt).toLocaleDateString(), 1, receiptData.amount, (quantity * receiptData.amount)]
+        ];
+        return data;
+    }
+    taxAndTotalSection(amount) {
+        const tax = 1;
+        const quantity = 1;
+        const subtotal = quantity * amount;
+        const data = [
+            ['', '', { text: 'Subtotal', fontSize: 10 }, { text: subtotal.toFixed(2), fontSize: 10 }, ''],
+            ['', '', { text: 'Tax', fontSize: 10 }, { text: tax.toFixed(2), fontSize: 10 }, ''],
+            ['', '', { text: 'Total Paid', fontSize: 10 }, { text: (subtotal + tax).toFixed(2), fontSize: 9 }, '']
+        ];
+        return data.filter(d => d);
+    }
+    emptyRow() {
+        const data = [
+            ['', '', '', '', '']
+        ];
+        return data.filter(d => d);
     }
 }
 module.exports = PaymentService;
